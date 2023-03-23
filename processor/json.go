@@ -1,76 +1,201 @@
 package processer
 
 import (
-	"log"
-	"strconv"
+	"regexp"
+	"strings"
 
 	"github.com/senayuki/mosaic/types"
 	"github.com/valyala/fastjson"
 )
 
-// input JSON string
-func MaskJSON(rule types.DLPRule, input string) (string, error) {
-	result, err := fastjson.Parse(input)
-	if err != nil {
-		return "", err
-	}
-	matched := fastjsonDetector([]string{}, result)
-	log.Println(matched)
-
-	return result.String(), nil
+type MaskKV struct {
+	detectConfig  []types.KVDetectConfig
+	detectKVField map[string]map[string]*types.KVField // key:val fields in config
+	detectExp     []detectExp                          // compiled regex
+}
+type detectExp struct {
+	KeyRegex []*regexp.Regexp
+	ValRegex []*regexp.Regexp
 }
 
-// recursion to detect all matched items
-func fastjsonDetector(jsonPath []string, val *fastjson.Value) []types.Mask {
-	matched := []types.Mask{}
+func NewMaskKV(rule types.KVRule) MaskKV {
+	m := MaskKV{detectConfig: rule.Detect, detectKVField: map[string]map[string]*types.KVField{}}
+	for idx, config := range m.detectConfig {
+		// find all KVField
+		if config.KVFieldOpt != nil {
+			if _, ok := m.detectKVField[config.KVFieldOpt.Key]; !ok {
+				m.detectKVField[config.KVFieldOpt.Key] = map[string]*types.KVField{}
+			}
+			m.detectKVField[config.KVFieldOpt.Key][config.KVFieldOpt.Val] = config.KVFieldOpt
+		}
+		// compile regexp
+		m.detectExp = append(m.detectExp, detectExp{})
+		for _, regex := range config.KeyRegex {
+			m.detectExp[idx].KeyRegex = append(m.detectExp[idx].KeyRegex, regexp.MustCompile(regex))
+		}
+		for _, regex := range config.ValRegex {
+			m.detectExp[idx].ValRegex = append(m.detectExp[idx].ValRegex, regexp.MustCompile(regex))
+		}
+	}
+	return m
+}
+
+// input JSON bytes
+func (m MaskKV) Detect(input []byte) ([]types.KVPair, error) {
+	val, err := fastjson.ParseBytes(input)
+	if err != nil {
+		return nil, err
+	}
+	matched := []types.KVPair{}
+	// extract all k-v pair (include k-v pair in fields
+	elements := m.visit(types.NewJSONPath(), "", val, nil)
+	for _, v := range elements {
+		valString := v.GetValString()
+		for configIdx, config := range m.detectConfig {
+			if v.KVFieldRel != config.KVFieldOpt {
+				continue
+			}
+			if m.matchKV(configIdx, v, valString) {
+				matched = append(matched, v)
+			}
+		}
+	}
+	return matched, nil
+}
+
+func (m MaskKV) matchKV(configIdx int, pair types.KVPair, valString string) bool {
+	keyEqMatch := false
+	keyContainsMatch := false
+	keyRegMatch := false
+	for _, keyKeyword := range m.detectConfig[configIdx].KeyEqs {
+		if strings.EqualFold(keyKeyword, pair.Key) {
+			keyEqMatch = true
+			break
+		}
+	}
+	for _, keyContains := range m.detectConfig[configIdx].KeyContains {
+		if strings.Contains(keyContains, pair.Key) {
+			keyContainsMatch = true
+			break
+		}
+	}
+	for _, keyRegex := range m.detectExp[configIdx].KeyRegex {
+		if keyRegex.MatchString(pair.Key) {
+			keyRegMatch = true
+			break
+		}
+	}
+
+	valEqMatch := false
+	valContainsMatch := false
+	valRegMatch := false
+	for _, valKeyword := range m.detectConfig[configIdx].ValEqs {
+		if strings.EqualFold(valKeyword, valString) {
+			valEqMatch = true
+			break
+		}
+	}
+	for _, valContains := range m.detectConfig[configIdx].ValContains {
+		if strings.Contains(valContains, valString) {
+			valContainsMatch = true
+			break
+		}
+	}
+	for _, valRegex := range m.detectExp[configIdx].ValRegex {
+		if valRegex.MatchString(valString) {
+			valRegMatch = true
+			break
+		}
+	}
+	switch m.detectConfig[configIdx].MatchMode {
+	case types.KVMatchDefault, types.KVMatchOr:
+		return (keyEqMatch || keyContainsMatch || keyRegMatch) ||
+			(valEqMatch || valContainsMatch || valRegMatch)
+	case types.KVMatchAnd:
+		return (keyEqMatch || keyContainsMatch || keyRegMatch) &&
+			(valEqMatch || valContainsMatch || valRegMatch)
+	default:
+		return false
+	}
+}
+
+// recursion to extract elements
+func (m MaskKV) visit(valJSONPath types.JSONPath, key string, val *fastjson.Value, kvFieldRel *types.KVField) []types.KVPair {
+	elements := []types.KVPair{}
 	switch val.Type() {
 	case fastjson.TypeObject:
 		obj := val.GetObject()
+		keyFieldProbable := map[string]struct{}{}
+		field := map[string]*fastjson.Value{}
 		obj.Visit(func(key []byte, v *fastjson.Value) {
-			matched = append(matched, fastjsonDetector(addJSONPath(jsonPath, string(key)), v)...)
+			keyStr := string(key)
+			if _, ok := m.detectKVField[keyStr]; ok {
+				keyFieldProbable[keyStr] = struct{}{}
+			}
+			field[keyStr] = v
+			elements = append(elements, m.visit(valJSONPath.Append(keyStr), keyStr, v, nil)...)
 		})
+		// add k-v fields relations
+		if len(keyFieldProbable) > 0 {
+			for keyField, _ := range keyFieldProbable {
+				// key must be string
+				if keyVal, ok := field[keyField]; ok && keyVal.Type() == fastjson.TypeString {
+					// value of keyField is the real key
+					key := string(keyVal.GetStringBytes())
+					for valField, kvFieldRel := range m.detectKVField[keyField] {
+						// value is impossible to be object
+						if val, ok := field[valField]; ok && val.Type() != fastjson.TypeObject {
+							elements = append(elements, m.visit(valJSONPath.Append(valField), key, val, kvFieldRel)...)
+						}
+					}
+				}
+			}
+		}
 	case fastjson.TypeArray:
 		arr := val.GetArray()
 		for idx, item := range arr {
-			matched = append(matched, fastjsonDetector(addJSONPath(jsonPath, strconv.Itoa(idx)), item)...)
+			elements = append(elements, m.visit(valJSONPath.Append(idx), key, item, kvFieldRel)...)
 		}
 	case fastjson.TypeString:
-		matched = append(matched, types.Mask{
-			JSONPath:   jsonPath,
-			Text:       string(val.GetStringBytes()),
-			MaskedText: string(val.GetStringBytes()),
+		elements = append(elements, types.KVPair{
+			Key:         key,
+			ValJSONPath: valJSONPath,
+			Val:         string(val.GetStringBytes()),
+			ValMasked:   string(val.GetStringBytes()),
+			KVFieldRel:  kvFieldRel,
 		})
 	case fastjson.TypeNumber:
-		matched = append(matched, types.Mask{
-			JSONPath:   jsonPath,
-			Text:       val.GetInt64(),
-			MaskedText: val.GetInt64(),
+		elements = append(elements, types.KVPair{
+			Key:         key,
+			ValJSONPath: valJSONPath,
+			Val:         val.GetInt64(),
+			ValMasked:   val.GetInt64(),
+			KVFieldRel:  kvFieldRel,
 		})
 	case fastjson.TypeNull:
-		matched = append(matched, types.Mask{
-			JSONPath:   jsonPath,
-			Text:       nil,
-			MaskedText: nil,
+		elements = append(elements, types.KVPair{
+			Key:         key,
+			ValJSONPath: valJSONPath,
+			Val:         nil,
+			ValMasked:   nil,
+			KVFieldRel:  kvFieldRel,
 		})
 	case fastjson.TypeTrue:
-		matched = append(matched, types.Mask{
-			JSONPath:   jsonPath,
-			Text:       true,
-			MaskedText: true,
+		elements = append(elements, types.KVPair{
+			Key:         key,
+			ValJSONPath: valJSONPath,
+			Val:         true,
+			ValMasked:   true,
+			KVFieldRel:  kvFieldRel,
 		})
 	case fastjson.TypeFalse:
-		matched = append(matched, types.Mask{
-			JSONPath:   jsonPath,
-			Text:       false,
-			MaskedText: false,
+		elements = append(elements, types.KVPair{
+			Key:         key,
+			ValJSONPath: valJSONPath,
+			Val:         false,
+			ValMasked:   false,
+			KVFieldRel:  kvFieldRel,
 		})
 	}
-	return matched
-}
-
-func addJSONPath(old []string, add string) []string {
-	jsonPathNow := make([]string, len(old), len(old)+1)
-	copy(jsonPathNow, old)
-	jsonPathNow = append(jsonPathNow, add)
-	return jsonPathNow
+	return elements
 }

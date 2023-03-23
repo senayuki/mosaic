@@ -1,11 +1,18 @@
 package types
 
-type Mask struct {
-	JSONPath   []string
-	Text       interface{}
-	MaskedText interface{}
+import "fmt"
+
+type KVPair struct {
+	Key         string
+	Val         interface{}
+	ValJSONPath JSONPath
+	ValMasked   interface{}
+	KVFieldRel  *KVField
 }
 
-type DLPRule struct {
-	Detect struct{}
+func (kv *KVPair) GetValString() string {
+	if kv.Val == nil {
+		return "null"
+	}
+	return fmt.Sprintf("%v", kv.Val)
 }

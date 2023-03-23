@@ -13,3 +13,5 @@ Mosaic is a framework for DLP.
 - [ ] Allow mask & unmask. This is very useful when coding the front-end form. 
 
 - [ ] Provide gRPC. 
+
+- [ ] Serverless ready.
