@@ -9,7 +9,7 @@ type (
 		KeyRegex    []string    // keys matched an regex
 		ValRegex    []string    // vals matched an regex
 		MatchMode   KVMatchMode // (key || val) matched or (key && val) matched
-
+		MaskRef     string      // reference mask processes
 		/*treat specified field as key-value pair
 		{
 			"name": "as key, val must be string",
@@ -25,7 +25,7 @@ type (
 )
 
 const (
-	KVMatchDefault KVMatchMode = ""
+	KVMatchDefault KVMatchMode = "" // "or" is default mode
 	KVMatchOr      KVMatchMode = "or"
 	KVMatchAnd     KVMatchMode = "and"
 )

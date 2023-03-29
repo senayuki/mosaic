@@ -8,9 +8,9 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-func TestMaskKV_Detect(t *testing.T) {
+func TestKVProcesser_Detect(t *testing.T) {
 	type args struct {
-		rule  types.KVRule
+		rule  types.KVRules
 		input interface{}
 	}
 	tests := []struct {
@@ -22,8 +22,8 @@ func TestMaskKV_Detect(t *testing.T) {
 		{
 			name: "match normal key-val(string)",
 			args: args{
-				rule: types.KVRule{
-					Detect: []types.KVDetectConfig{
+				rule: types.KVRules{
+					DetectRules: []types.KVDetectConfig{
 						{
 							KeyEqs: []string{
 								"password",
@@ -63,8 +63,8 @@ func TestMaskKV_Detect(t *testing.T) {
 		{
 			name: "match key-val(non-string)",
 			args: args{
-				rule: types.KVRule{
-					Detect: []types.KVDetectConfig{
+				rule: types.KVRules{
+					DetectRules: []types.KVDetectConfig{
 						{
 							KeyEqs: []string{
 								"phonenumber",
@@ -116,8 +116,8 @@ func TestMaskKV_Detect(t *testing.T) {
 		{
 			name: "match regex val",
 			args: args{
-				rule: types.KVRule{
-					Detect: []types.KVDetectConfig{
+				rule: types.KVRules{
+					DetectRules: []types.KVDetectConfig{
 						{
 							ValRegex: []string{`^LTA[a-zA-Z0-9]+$`, `^1[0-9]+$`},
 						},
@@ -149,10 +149,10 @@ func TestMaskKV_Detect(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "match kv fields & matchMode and",
+			name: "match kv fields & matchMode=and",
 			args: args{
-				rule: types.KVRule{
-					Detect: []types.KVDetectConfig{
+				rule: types.KVRules{
+					DetectRules: []types.KVDetectConfig{
 						{
 							KeyEqs: []string{
 								"real_key",
@@ -228,7 +228,7 @@ func TestMaskKV_Detect(t *testing.T) {
 				t.Errorf("json.Marshal() wantDetectBytes error = %v", err)
 				return
 			}
-			m := NewMaskKV(tt.args.rule)
+			m := NewKVProcesser(tt.args.rule)
 			got, err := m.Detect(inputJsonBytes)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Detect() error = %v, wantErr %v", err, tt.wantErr)
@@ -247,8 +247,8 @@ func TestMaskKV_Detect(t *testing.T) {
 }
 
 func BenchmarkJSON_Detect(b *testing.B) {
-	rule := types.KVRule{
-		Detect: []types.KVDetectConfig{
+	rule := types.KVRules{
+		DetectRules: []types.KVDetectConfig{
 			{
 				KeyEqs: []string{
 					"keyname",
@@ -272,7 +272,7 @@ func BenchmarkJSON_Detect(b *testing.B) {
 				ValEqs: []string{"null"},
 			},
 			{
-				KeyEqs: []string{"Value"},
+				ValEqs: []string{"Value"},
 			},
 		},
 	}
@@ -307,7 +307,7 @@ func BenchmarkJSON_Detect(b *testing.B) {
 	}
 	`
 	inputByte := []byte(input)
-	m := NewMaskKV(rule)
+	m := NewKVProcesser(rule)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		m.Detect(inputByte)
@@ -349,7 +349,7 @@ func BenchmarkVisitJSON(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	m := NewMaskKV(types.KVRule{})
+	m := NewKVProcesser(types.KVRules{})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		m.visit(types.NewJSONPath(), "", result, nil)

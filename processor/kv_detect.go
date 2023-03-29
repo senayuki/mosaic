@@ -8,40 +8,13 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type MaskKV struct {
-	detectConfig  []types.KVDetectConfig
-	detectKVField map[string]map[string]*types.KVField // key:val fields in config
-	detectExp     []detectExp                          // compiled regex
-}
 type detectExp struct {
 	KeyRegex []*regexp.Regexp
 	ValRegex []*regexp.Regexp
 }
 
-func NewMaskKV(rule types.KVRule) MaskKV {
-	m := MaskKV{detectConfig: rule.Detect, detectKVField: map[string]map[string]*types.KVField{}}
-	for idx, config := range m.detectConfig {
-		// find all KVField
-		if config.KVFieldOpt != nil {
-			if _, ok := m.detectKVField[config.KVFieldOpt.Key]; !ok {
-				m.detectKVField[config.KVFieldOpt.Key] = map[string]*types.KVField{}
-			}
-			m.detectKVField[config.KVFieldOpt.Key][config.KVFieldOpt.Val] = config.KVFieldOpt
-		}
-		// compile regexp
-		m.detectExp = append(m.detectExp, detectExp{})
-		for _, regex := range config.KeyRegex {
-			m.detectExp[idx].KeyRegex = append(m.detectExp[idx].KeyRegex, regexp.MustCompile(regex))
-		}
-		for _, regex := range config.ValRegex {
-			m.detectExp[idx].ValRegex = append(m.detectExp[idx].ValRegex, regexp.MustCompile(regex))
-		}
-	}
-	return m
-}
-
 // input JSON bytes
-func (m MaskKV) Detect(input []byte) ([]types.KVPair, error) {
+func (m KVProcesser) Detect(input []byte) ([]types.KVPair, error) {
 	val, err := fastjson.ParseBytes(input)
 	if err != nil {
 		return nil, err
@@ -63,7 +36,7 @@ func (m MaskKV) Detect(input []byte) ([]types.KVPair, error) {
 	return matched, nil
 }
 
-func (m MaskKV) matchKV(configIdx int, pair types.KVPair, valString string) bool {
+func (m KVProcesser) matchKV(configIdx int, pair types.KVPair, valString string) bool {
 	keyEqMatch := false
 	keyContainsMatch := false
 	keyRegMatch := false
@@ -120,7 +93,7 @@ func (m MaskKV) matchKV(configIdx int, pair types.KVPair, valString string) bool
 }
 
 // recursion to extract elements
-func (m MaskKV) visit(valJSONPath types.JSONPath, key string, val *fastjson.Value, kvFieldRel *types.KVField) []types.KVPair {
+func (m KVProcesser) visit(valJSONPath types.JSONPath, key string, val *fastjson.Value, kvFieldRel *types.KVField) []types.KVPair {
 	elements := []types.KVPair{}
 	switch val.Type() {
 	case fastjson.TypeObject:

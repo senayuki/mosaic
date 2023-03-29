@@ -2,6 +2,11 @@ package types
 
 import "fmt"
 
+type KVRules struct {
+	DetectRules []KVDetectConfig
+	MaskRules   []KVMaskConfig
+}
+
 type KVPair struct {
 	Key         string
 	Val         interface{}
