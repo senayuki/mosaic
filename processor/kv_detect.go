@@ -47,7 +47,7 @@ func (m KVProcesser) matchKV(configIdx int, pair types.KVPair, valString string)
 		}
 	}
 	for _, keyContains := range m.detectConfig[configIdx].KeyContains {
-		if strings.Contains(keyContains, pair.Key) {
+		if strings.Contains(pair.Key, keyContains) {
 			keyContainsMatch = true
 			break
 		}
@@ -69,7 +69,7 @@ func (m KVProcesser) matchKV(configIdx int, pair types.KVPair, valString string)
 		}
 	}
 	for _, valContains := range m.detectConfig[configIdx].ValContains {
-		if strings.Contains(valContains, valString) {
+		if strings.Contains(valString, valContains) {
 			valContainsMatch = true
 			break
 		}

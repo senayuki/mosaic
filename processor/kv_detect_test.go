@@ -66,13 +66,13 @@ func TestKVProcesser_Detect(t *testing.T) {
 				rule: types.KVRules{
 					DetectRules: []types.KVDetectConfig{
 						{
-							KeyEqs: []string{
-								"phonenumber",
+							KeyContains: []string{
+								"phone",
 							},
 						},
 						{
-							ValEqs: []string{
-								"true",
+							ValContains: []string{
+								"tru",
 							},
 						},
 						{
@@ -80,11 +80,18 @@ func TestKVProcesser_Detect(t *testing.T) {
 								"null",
 							},
 						},
+						{
+							KeyRegex:  []string{"^mobile[0-9]*$"},
+							ValRegex:  []string{"^[0-9]*$"},
+							MatchMode: types.KVMatchAnd,
+						},
 					},
 				},
 				input: map[string]interface{}{
 					"phonenumber": 1234567890,
+					"mobile1234":  "12344321",
 					"isMember":    true,
+					"notMember":   false,
 					"status":      nil,
 				},
 			},
@@ -94,6 +101,13 @@ func TestKVProcesser_Detect(t *testing.T) {
 					Val:         true,
 					ValMasked:   true,
 					ValJSONPath: types.NewJSONPath().Append("isMember"),
+					KVFieldRel:  nil,
+				},
+				{
+					Key:         "mobile1234",
+					Val:         "12344321",
+					ValJSONPath: types.NewJSONPath().Append("mobile1234"),
+					ValMasked:   "12344321",
 					KVFieldRel:  nil,
 				},
 				{
@@ -266,7 +280,7 @@ func BenchmarkJSON_Detect(b *testing.B) {
 				ValEqs: []string{"aaaa"},
 			},
 			{
-				ValEqs: []string{"91919191"},
+				ValContains: []string{"919191"},
 			},
 			{
 				ValEqs: []string{"null"},
