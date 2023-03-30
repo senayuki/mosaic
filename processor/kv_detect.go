@@ -19,9 +19,10 @@ func (m KVProcesser) Detect(input []byte) ([]types.KVPair, error) {
 	if err != nil {
 		return nil, err
 	}
-	matched := []types.KVPair{}
 	// extract all k-v pair (include k-v pair in fields
-	elements := m.visit(types.NewJSONPath(), "", val, nil)
+	var elements []types.KVPair
+	elements = m.visit(types.NewJSONPath(), "", val, nil, elements)
+	matched := make([]types.KVPair, 0, len(elements))
 	for _, v := range elements {
 		valString := v.GetValString()
 		for configIdx, config := range m.detectConfig {
@@ -93,33 +94,29 @@ func (m KVProcesser) matchKV(configIdx int, pair types.KVPair, valString string)
 }
 
 // recursion to extract elements
-func (m KVProcesser) visit(valJSONPath types.JSONPath, key string, val *fastjson.Value, kvFieldRel *types.KVField) []types.KVPair {
-	elements := []types.KVPair{}
+func (m KVProcesser) visit(valJSONPath types.JSONPath, key string, val *fastjson.Value, kvFieldRel *types.KVField, elements []types.KVPair) []types.KVPair {
 	switch val.Type() {
 	case fastjson.TypeObject:
-		obj := val.GetObject()
 		keyFieldProbable := map[string]struct{}{}
 		field := map[string]*fastjson.Value{}
-		obj.Visit(func(key []byte, v *fastjson.Value) {
+		val.GetObject().Visit(func(key []byte, v *fastjson.Value) {
 			keyStr := string(key)
 			if _, ok := m.detectKVField[keyStr]; ok {
 				keyFieldProbable[keyStr] = struct{}{}
 			}
 			field[keyStr] = v
-			elements = append(elements, m.visit(valJSONPath.Append(keyStr), keyStr, v, nil)...)
+			elements = m.visit(valJSONPath.Append(keyStr), keyStr, v, nil, elements)
 		})
 		// add k-v fields relations
-		if len(keyFieldProbable) > 0 {
-			for keyField, _ := range keyFieldProbable {
-				// key must be string
-				if keyVal, ok := field[keyField]; ok && keyVal.Type() == fastjson.TypeString {
-					// value of keyField is the real key
-					key := string(keyVal.GetStringBytes())
-					for valField, kvFieldRel := range m.detectKVField[keyField] {
-						// value is impossible to be object
-						if val, ok := field[valField]; ok && val.Type() != fastjson.TypeObject {
-							elements = append(elements, m.visit(valJSONPath.Append(valField), key, val, kvFieldRel)...)
-						}
+		for keyField, _ := range keyFieldProbable {
+			// key must be string
+			if keyVal, ok := field[keyField]; ok && keyVal.Type() == fastjson.TypeString {
+				// value of keyField is the real key
+				key := string(keyVal.GetStringBytes())
+				for valField, kvFieldRel := range m.detectKVField[keyField] {
+					// value is impossible to be object
+					if val, ok := field[valField]; ok && val.Type() != fastjson.TypeObject {
+						elements = m.visit(valJSONPath.Append(valField), key, val, kvFieldRel, elements)
 					}
 				}
 			}
@@ -127,7 +124,7 @@ func (m KVProcesser) visit(valJSONPath types.JSONPath, key string, val *fastjson
 	case fastjson.TypeArray:
 		arr := val.GetArray()
 		for idx, item := range arr {
-			elements = append(elements, m.visit(valJSONPath.Append(idx), key, item, kvFieldRel)...)
+			elements = m.visit(valJSONPath.Append(idx), key, item, kvFieldRel, elements)
 		}
 	case fastjson.TypeString:
 		elements = append(elements, types.KVPair{

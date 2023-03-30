@@ -1,6 +1,10 @@
 package mask
 
-import "github.com/senayuki/mosaic/types"
+import (
+	"context"
+
+	"github.com/senayuki/mosaic/types"
+)
 
 type MarkCoverProcesser struct {
 	CoverChar rune
@@ -27,16 +31,19 @@ func (m *MarkCoverProcesser) Init(maskRule *types.KVMaskConfig) {
 }
 
 // TODO input should be []byte
-func (m MarkCoverProcesser) Mask(in string) (out string, err error) {
+func (m MarkCoverProcesser) Mask(ctx context.Context, in string) (out string, err error) {
 	inRune := []rune(in)
 	inLen := len(inRune)
-	if len(in) == 0 {
+	if inLen == 0 {
 		return
 	}
-	outRune := []rune{}
-	maskedLength := 0
+	outRune := make([]rune, 0, inLen)
+
 	offset := m.Offset
 	padding := m.Padding
+	maskedLength := 0
+
+	// handling possible overflow issues
 	if inLen <= offset && inLen <= padding {
 		offset = (inLen - 1) / 2
 		padding = (inLen - 1) / 2
@@ -45,6 +52,7 @@ func (m MarkCoverProcesser) Mask(in string) (out string, err error) {
 	} else if inLen <= padding {
 		padding = inLen - 1
 	}
+
 	for index, _ := range inRune {
 		if index >= offset && index < (inLen-padding) {
 			if m.Length > 0 {

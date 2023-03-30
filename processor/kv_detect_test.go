@@ -363,9 +363,18 @@ func BenchmarkVisitJSON(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	m := NewKVProcesser(types.KVRules{})
+	m := NewKVProcesser(types.KVRules{
+		DetectRules: []types.KVDetectConfig{
+			{
+				KVFieldOpt: &types.KVField{
+					Key: "key",
+					Val: "val",
+				},
+			},
+		},
+	})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		m.visit(types.NewJSONPath(), "", result, nil)
+		m.visit(types.NewJSONPath(), "", result, nil, []types.KVPair{})
 	}
 }

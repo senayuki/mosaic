@@ -1,6 +1,7 @@
 package mask
 
 import (
+	"context"
 	"testing"
 
 	"github.com/senayuki/mosaic/types"
@@ -180,7 +181,7 @@ func TestMarkCoverProcesser_Mask(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := MarkCoverProcesser{}
 			m.Init(&tt.fields)
-			gotOut, err := m.Mask(tt.args.in)
+			gotOut, err := m.Mask(context.Background(), tt.args.in)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("MarkCoverProcesser.Mask() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -189,5 +190,22 @@ func TestMarkCoverProcesser_Mask(t *testing.T) {
 				t.Errorf("MarkCoverProcesser.Mask() = %v, want %v", gotOut, tt.wantOut)
 			}
 		})
+	}
+}
+
+func BenchmarkMarkCoverProcesser_Mask(b *testing.B) {
+	m := MarkCoverProcesser{}
+	m.Init(&types.KVMaskConfig{
+		CoverParam: types.MaskRuleCoverParam{
+			Char:    "*",
+			Offset:  20,
+			Padding: 20,
+			Reverse: false,
+		},
+	})
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m.Mask(ctx, "我能吞下玻璃而不伤身体")
 	}
 }
